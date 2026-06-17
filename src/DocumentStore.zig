@@ -42,7 +42,6 @@ pub const Config = struct {
     zig_exe_path: ?[]const u8,
     zig_lib_dir: ?std.Build.Cache.Directory,
     builtin_path: ?[]const u8,
-    global_cache_dir: ?std.Build.Cache.Directory,
     wasi_preopens: switch (builtin.os.tag) {
         .wasi => std.process.Preopens,
         else => void,
@@ -918,7 +917,6 @@ pub fn invalidateBuildFile(self: *DocumentStore, build_file_uri: Uri) void {
     comptime std.debug.assert(supports_build_system);
 
     if (self.config.zig_exe_path == null) return;
-    if (self.config.global_cache_dir == null) return;
     if (self.config.zig_lib_dir == null) return;
 
     const build_file = self.getBuildFile(build_file_uri) orelse return;
@@ -1321,7 +1319,6 @@ fn loadBuildConfiguration(self: *DocumentStore, build_file_uri: Uri, build_file_
     defer tracy_zone.end();
 
     std.debug.assert(self.config.zig_exe_path != null);
-    std.debug.assert(self.config.global_cache_dir != null);
     std.debug.assert(self.config.zig_lib_dir != null);
 
     const build_file_path = try build_file_uri.toFsPath(self.allocator);

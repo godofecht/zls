@@ -104,7 +104,6 @@ pub fn main(init: std.process.Init) Error!void {
         .zig_exe_path = zig_exe_path,
         .zig_lib_dir = zig_lib_dir,
         .builtin_path = null,
-        .global_cache_dir = null,
         .wasi_preopens = switch (builtin.target.os.tag) {
             .wasi => try std.process.Preopens.init(arena),
             else => {},
