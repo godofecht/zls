@@ -68,9 +68,9 @@ pub fn build(b: *Build) !void {
         const test_options = b.addOptions();
         test_options.step.name = "ZLS test options";
 
-        test_options.addOptionPath("zig_exe_path", .{ .cwd_relative = b.graph.zig_exe });
-        test_options.addOptionPath("zig_lib_path", .{ .cwd_relative = b.fmt("{f}", .{b.graph.zig_lib_directory}) });
-        test_options.addOptionPath("global_cache_path", .{ .cwd_relative = b.cache_root.join(b.allocator, &.{"zls"}) catch @panic("OOM") });
+        test_options.addOptionPath("zig_exe_path", .zig_exe);
+        test_options.addOptionPath("zig_lib_path", .zig_lib);
+        test_options.addOptionPath("global_cache_path", std.Build.LazyPath.cache_root.join(b.allocator, "zls") catch @panic("OOM"));
 
         break :blk test_options.createModule();
     };
@@ -118,18 +118,15 @@ pub fn build(b: *Build) !void {
     { // zig build gen
         const gen_step = b.step("gen", "Regenerate config files");
 
+        const update_source = b.addUpdateSourceFiles();
+        gen_step.dependOn(&update_source.step);
+
         const gen_cmd = b.addRunArtifact(gen_exe);
-        if (b.args) |args| {
-            gen_cmd.addArgs(args);
-            gen_step.dependOn(&gen_cmd.step);
-        } else {
-            const update_source = b.addUpdateSourceFiles();
-            gen_cmd.addArg("--generate-config");
-            update_source.addCopyFileToSource(gen_cmd.addOutputFileArg("Config.zig"), "src/Config.zig");
-            gen_cmd.addArg("--generate-schema");
-            update_source.addCopyFileToSource(gen_cmd.addOutputFileArg("schema.json"), "schema.json");
-            gen_step.dependOn(&update_source.step);
-        }
+        gen_cmd.addArg("--generate-config");
+        update_source.addCopyFileToSource(gen_cmd.addOutputFileArg("Config.zig"), "src/Config.zig");
+        gen_cmd.addArg("--generate-schema");
+        update_source.addCopyFileToSource(gen_cmd.addOutputFileArg("schema.json"), "schema.json");
+        gen_cmd.addPassthruArgs();
     }
 
     { // zig build release
@@ -255,20 +252,6 @@ pub fn build(b: *Build) !void {
         .use_lld = use_llvm,
     });
 
-    if (target.result.cpu.arch.isWasm() and b.enable_wasmtime) {
-        // Zig's build system integration with wasmtime does not support adding custom preopen directories so it is done manually.
-        const args: []const ?[]const u8 = &.{
-            "wasmtime",
-            "--dir=.",
-            b.fmt("--dir={f}::/lib", .{b.graph.zig_lib_directory}),
-            b.fmt("--dir={s}::/cache", .{b.cache_root.join(b.allocator, &.{"zls"}) catch @panic("OOM")}),
-            "--",
-            null,
-        };
-        tests.setExecCmd(args);
-        src_tests.setExecCmd(args);
-    }
-
     blk: { // zig build test, zig build test-build-runner, zig build test-analysis
         const test_step = b.step("test", "Run all the tests");
         const test_build_runner_step = b.step("test-build-runner", "Run all the build runner tests");
@@ -281,8 +264,10 @@ pub fn build(b: *Build) !void {
         const run_tests = b.addRunArtifact(tests);
         const run_src_tests = b.addRunArtifact(src_tests);
 
-        run_tests.skip_foreign_checks = target.result.cpu.arch.isWasm() and b.enable_wasmtime;
-        run_src_tests.skip_foreign_checks = target.result.cpu.arch.isWasm() and b.enable_wasmtime;
+        for ([_]*Build.Step.Run{ run_tests, run_src_tests }) |run| {
+            run.setPreopen("/lib", .zig_lib);
+            run.setPreopen("/cache", Build.LazyPath.cache_root.join(b.allocator, "zls") catch @panic("OOM"));
+        }
 
         // Setup dependencies of `zig build test`
         test_step.dependOn(&run_tests.step);
@@ -303,10 +288,11 @@ pub fn build(b: *Build) !void {
             run_test_steps.append(b.allocator, step.cast(std.Build.Step.Run).?) catch @panic("OOM");
         }
 
-        const kcov_bin = b.findProgram(&.{"kcov"}, &.{}) catch "kcov";
+        const kcov_bin = b.findProgramLazy(.{ .names = &.{"kcov"} });
 
         const merge_step = std.Build.Step.Run.create(b, "merge coverage");
-        merge_step.addArgs(&.{ kcov_bin, "--merge" });
+        merge_step.addFileArg(kcov_bin);
+        merge_step.addArg("--merge");
         merge_step.rename_step_with_output_arg = false;
         const merged_coverage_output = merge_step.addOutputFileArg(".");
 
@@ -315,7 +301,8 @@ pub fn build(b: *Build) !void {
 
             // prepend the kcov exec args
             const argv = run_step.argv.toOwnedSlice(b.allocator) catch @panic("OOM");
-            run_step.addArgs(&.{ kcov_bin, "--collect-only" });
+            merge_step.addFileArg(kcov_bin);
+            merge_step.addArg("--collect-only");
             run_step.addPrefixedDirectoryArg("--include-pattern=", b.path("src"));
             merge_step.addDirectoryArg(run_step.addOutputFileArg(run_step.producer.?.name));
             run_step.argv.appendSlice(b.allocator, argv) catch @panic("OOM");
@@ -330,7 +317,6 @@ pub fn build(b: *Build) !void {
     }
 }
 
-/// Returns `MAJOR.MINOR.PATCH-dev` when `git describe` failed.
 fn getVersion(b: *Build) std.SemanticVersion {
     const version_string = b.option([]const u8, "version-string", "Override the version of this build. Must be a semantic version.");
     if (version_string) |semver_string| {
@@ -341,27 +327,68 @@ fn getVersion(b: *Build) std.SemanticVersion {
 
     if (zls_version.pre == null) return zls_version;
 
+    // Ensure git version changes get picked up.
+    git: {
+        const io = b.graph.io;
+        const git_file = b.root.openFile(io, ".git", .{ .allow_directory = false }) catch |err| switch (err) {
+            error.IsDir => {
+                b.dependOnFileContents(b.path(".git/logs/HEAD"));
+                break :git;
+            },
+            error.FileNotFound => {
+                // Need a way to indicate that the build.zig logic depends on the absence of a file.
+                b.graph.poisonCache();
+                break :git;
+            },
+            else => |e| std.process.fatal("Failed to read '.git' directory: {t}", .{e}),
+        };
+        defer git_file.close(io);
+        var line_buffer: ["gitdir: ".len + std.Io.Dir.max_path_bytes + 1]u8 = undefined;
+        var git_file_reader = git_file.reader(io, &line_buffer);
+        if (std.mem.cutPrefix(u8, std.mem.trimEnd(u8, git_file_reader.interface.allocRemaining(
+            b.graph.arena,
+            .limited("gitdir: ".len + std.Io.Dir.max_path_bytes + "\r\n".len),
+        ) catch |e| @panic(@errorName(e)), "\r\n"), "gitdir: ")) |git_dir| {
+            const head_file = b.pathJoin(&.{ git_dir, "logs", "HEAD" });
+            b.dependOnFileContents(if (std.Io.Dir.path.isAbsolute(head_file))
+                b.graph.cwdRelativePath(head_file)
+            else
+                b.path(head_file));
+        }
+    }
+
+    if (!std.process.can_spawn) {
+        std.process.fatal("version info cannot be retrieved from git. ZLS version must be provided using -Dversion-string", .{});
+    }
+
+    const root_path = b.fmt("{f}", .{b.root});
     const argv: []const []const u8 = &.{
-        "git", "-C", b.pathFromRoot("."), "--git-dir", ".git", "describe", "--match", "*.*.*", "--tags",
+        "git", "-C", root_path, "--git-dir", ".git", "describe", "--match", "*.*.*", "--tags",
     };
-    var code: u8 = undefined;
-    const git_describe_untrimmed = b.runAllowFail(argv, &code, .ignore) catch |err| {
-        const argv_joined = std.mem.join(b.allocator, " ", argv) catch @panic("OOM");
+    const run_result = b.runFallible(argv, .{ .stderr_behavior = .ignore });
+    const git_describe = switch (run_result) {
+        .success => |stdout| std.mem.trim(u8, stdout, " \n\r"),
+        .spawn_failed => |err| err,
+        .bad_exit_code => error.BadExitCode,
+        .crashed => error.Crashed,
+    } catch |err| {
+        b.graph.poisonCache();
+        const cmd: std.zig.SubprocessCommand = .{ .argv = argv, .cwd = root_path };
         std.log.warn(
-            \\Failed to run git describe to resolve ZLS version: {}
-            \\command: {s}
+            \\Failed to run 'git describe' to resolve ZLS version: {t}
+            \\command: {f}
             \\
             \\Consider passing the -Dversion-string flag to specify the ZLS version.
-        , .{ err, argv_joined });
+        , .{ err, cmd });
         return zls_version;
     };
 
-    const git_describe = std.mem.trim(u8, git_describe_untrimmed, " \n\r");
-
-    switch (std.mem.count(u8, git_describe, "-")) {
+    switch (std.mem.countScalar(u8, git_describe, '-')) {
         0 => {
             // Tagged release version (e.g. 0.10.0).
-            std.debug.assert(std.mem.eql(u8, git_describe, b.fmt("{f}", .{zls_version}))); // tagged release must match version string
+            if (!std.mem.eql(u8, git_describe, b.fmt("{f}", .{zls_version}))) {
+                std.process.fatal("ZLS version '{f}' does not match Git tag '{s}'", .{ zls_version, git_describe });
+            }
             return zls_version;
         },
         2 => {
@@ -371,9 +398,18 @@ fn getVersion(b: *Build) std.SemanticVersion {
             const commit_height = it.next().?;
             const commit_id = it.next().?;
 
-            const ancestor_ver = std.SemanticVersion.parse(tagged_ancestor) catch unreachable;
-            std.debug.assert(zls_version.order(ancestor_ver) == .gt); // ZLS version must be greater than its previous version
-            std.debug.assert(std.mem.startsWith(u8, commit_id, "g")); // commit hash is prefixed with a 'g'
+            if (std.SemanticVersion.parse(tagged_ancestor)) |ancestor_ver| {
+                if (zls_version.order(ancestor_ver) != .gt) {
+                    std.process.fatal("ZLS version '{f}' must be greater than tagged ancestor '{f}'", .{ zls_version, ancestor_ver });
+                }
+            } else |_| {
+                // Ignore tagged ancestor if it's not a semantic version.
+            }
+
+            // Check that the commit hash is prefixed with a 'g' (a Git convention).
+            if (!std.mem.startsWith(u8, commit_id, "g")) {
+                std.process.fatal("Unexpected `git describe` output: {s}", .{git_describe});
+            }
 
             return .{
                 .major = zls_version.major,
@@ -383,10 +419,7 @@ fn getVersion(b: *Build) std.SemanticVersion {
                 .build = commit_id[1..],
             };
         },
-        else => {
-            std.debug.print("Unexpected 'git describe' output: '{s}'\n", .{git_describe});
-            std.process.exit(1);
-        },
+        else => std.process.fatal("Unexpected 'git describe' output: '{s}'", .{git_describe}),
     }
 }
 
@@ -488,7 +521,7 @@ fn release(b: *Build, release_artifacts: []const *Build.Step.Compile, released_z
     const release_minisign = b.option(bool, "release-minisign", "Sign release artifacts with Minisign") orelse false;
 
     if (released_zls_version.pre != null and released_zls_version.build == null) {
-        release_step.addError("Cannot build release because the ZLS version could not be resolved", .{}) catch @panic("OOM");
+        release_step.dependOn(&b.addFail("Cannot build release because the ZLS version could not be resolved").step);
         return;
     }
 
@@ -568,7 +601,7 @@ fn release(b: *Build, release_artifacts: []const *Build.Step.Compile, released_z
             const minising_cmd = b.addSystemCommand(&.{ "minisign", "-Sm" });
             minising_cmd.clearEnvironment();
             minising_cmd.addFileArg(file_path);
-            minising_cmd.addPrefixedFileArg("-s", .{ .cwd_relative = "minisign.key" });
+            minising_cmd.addPrefixedFileArg("-s", b.graph.cwdRelativePath("minisign.key"));
             const minising_file_path = minising_cmd.addPrefixedOutputFileArg("-x", minisign_basename);
 
             const install_minising = b.addInstallFileWithDir(minising_file_path, install_dir, minisign_basename);
