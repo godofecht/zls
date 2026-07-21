@@ -296,7 +296,7 @@ pub fn collectAutoDiscardDiagnostics(
             .severity = .Information,
             .code = null,
             .source = "zls",
-            .message = "auto discard for unused variable",
+            .message = .{ .string = "auto discard for unused variable" },
             .relatedInformation = related_info,
         });
     }

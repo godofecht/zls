@@ -404,7 +404,7 @@ fn convertErrorBundleToLSPDiangostics(
             .range = src_range,
             .severity = .Error,
             .source = "zls",
-            .message = message,
+            .message = .{ .string = message },
             .tags = if (tags.items.len != 0) tags.items else null,
             .relatedInformation = relatedInformation,
         });
