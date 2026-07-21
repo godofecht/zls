@@ -1144,7 +1144,7 @@ pub fn init(io: std.Io, gpa: Allocator) Allocator.Error!InternPool {
 
     try ip.map.ensureTotalCapacity(gpa, items.len);
     try ip.items.ensureTotalCapacity(gpa, items.len);
-    if (builtin.is_test or builtin.mode == .Debug) {
+    if (builtin.is_test or builtin.mode == .debug) {
         // detect wrong value for extra_count
         try ip.extra.ensureTotalCapacityPrecise(gpa, extra_count);
     } else {
@@ -1546,9 +1546,9 @@ fn addExtra(ip: *InternPool, comptime T: type, extra: T) Allocator.Error!u32 {
     const size = @divExact(@sizeOf(T), 4);
 
     try ip.extra.ensureUnusedCapacity(ip.gpa, size);
-    inline for (std.meta.fields(T)) |field| {
-        const item = @field(extra, field.name);
-        switch (field.type) {
+    inline for (comptime std.meta.fieldNames(T), comptime std.meta.fieldTypes(T)) |field_name, FieldType| {
+        const item = @field(extra, field_name);
+        switch (FieldType) {
             Index,
             Decl.Index,
             Decl.OptionalIndex,
@@ -1574,7 +1574,7 @@ fn addExtra(ip: *InternPool, comptime T: type, extra: T) Allocator.Error!u32 {
             LimbSlice,
             => ip.extra.appendSliceAssumeCapacity(&.{ item.start, item.len }),
 
-            else => @compileError("unexpected: " ++ @typeName(field.type)),
+            else => @compileError("unexpected: " ++ @typeName(FieldType)),
         }
     }
     return result;
@@ -1583,10 +1583,10 @@ fn addExtra(ip: *InternPool, comptime T: type, extra: T) Allocator.Error!u32 {
 fn extraData(ip: *const InternPool, comptime T: type, index: u32) T {
     var result: T = undefined;
     var i: u32 = 0;
-    inline for (std.meta.fields(T)) |field| {
+    inline for (comptime std.meta.fieldNames(T), comptime std.meta.fieldTypes(T)) |field_name, FieldType| {
         const item = ip.extra.items[index + i];
         i += 1;
-        @field(result, field.name) = switch (field.type) {
+        @field(result, field_name) = switch (FieldType) {
             Index,
             StringPool.String,
             StringPool.OptionalString,
@@ -1620,7 +1620,7 @@ fn extraData(ip: *const InternPool, comptime T: type, index: u32) T {
                 break :blk .{ .start = item, .len = ip.extra.items[index + i] };
             },
 
-            else => @compileError("unexpected: " ++ @typeName(field.type)),
+            else => @compileError("unexpected: " ++ @typeName(FieldType)),
         };
     }
     return result;
@@ -1894,7 +1894,7 @@ fn coerceInt(
 }
 
 pub fn resolvePeerTypes(ip: *InternPool, types: []const Index, target: std.Target) Allocator.Error!Index {
-    if (builtin.mode == .Debug) {
+    if (builtin.mode == .debug) {
         for (types) |ty| {
             assert(ip.isType(ty));
         }
