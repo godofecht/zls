@@ -479,7 +479,7 @@ pub const Handle = struct {
 
         const node_tags = tree.nodes.items(.tag);
         for (node_tags, 0..) |tag, i| {
-            const node: Ast.Node.Index = @enumFromInt(i);
+            const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
 
             switch (tag) {
                 .builtin_call,
@@ -1364,7 +1364,7 @@ fn loadBuildConfiguration(self: *DocumentStore, build_file_uri: Uri, build_file_
     const diagnostic_tag: DiagnosticsCollection.Tag = tag: {
         var hasher: std.hash.Wyhash = .init(47); // Chosen by the following prompt: Pwease give a wandom nyumbew
         hasher.update(build_file_uri.raw);
-        break :tag @enumFromInt(@as(u32, @truncate(hasher.final())));
+        break :tag @fromBackingInt(@truncate(hasher.final()));
     };
 
     if (!is_ok) {
