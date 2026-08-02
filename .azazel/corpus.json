@@ -1,0 +1,48 @@
+{
+  "name": "zls",
+  "upstream": "zigtools/zls",
+  "fork": "godofecht/zls",
+  "branch": "azazel-zaza-integration",
+  "notes": "language server; generated version data, tests, release steps",
+  "status": "integration scaffold",
+  "preferred_zig": "0.15",
+  "baseline_command": [
+    "zig",
+    "build",
+    "--help"
+  ],
+  "build_zig": "0.17-dev",
+  "build_command": [
+    "zig",
+    "build",
+    "--summary",
+    "all"
+  ],
+  "expected_build_classification": "zig-toolchain",
+  "azazel_command": [
+    "azazel",
+    "parity",
+    "--manifest",
+    ".azazel/parity.json"
+  ],
+  "expected_baseline_classification": "zig-toolchain",
+  "first_targets": [
+    "exe:zls",
+    "tests",
+    "generated version data"
+  ],
+  "system_deps": [],
+  "required_tools": [],
+  "pkg_config_libs": [],
+  "replacement_gaps": [
+    "exact dev-toolchain window",
+    "package dependencies",
+    "generated version data"
+  ],
+  "integration_kind": "azazel",
+  "parity_status": "scaffold-only",
+  "executable_parity_status": "not-modeled",
+  "executable_parity_command": [],
+  "expected_executable_parity_classification": "not-modeled",
+  "executable_parity_targets": []
+}

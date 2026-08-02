@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "repo": "zls",
+  "baseline": {
+    "command": [
+      "zig",
+      "build",
+      "--help"
+    ],
+    "expected_classification": "zig-toolchain",
+    "preferred_zig": "0.15"
+  },
+  "build": {
+    "command": [
+      "zig",
+      "build",
+      "--summary",
+      "all"
+    ],
+    "zig": "0.17-dev",
+    "expected_classification": "zig-toolchain"
+  },
+  "azazel": {
+    "command": [
+      "azazel",
+      "parity",
+      "--manifest",
+      ".azazel/parity.json"
+    ],
+    "status": "scaffold-only",
+    "first_targets": [
+      "exe:zls",
+      "tests",
+      "generated version data"
+    ],
+    "system_deps": [],
+    "required_tools": [],
+    "pkg_config_libs": [],
+    "replacement_gaps": [
+      "exact dev-toolchain window",
+      "package dependencies",
+      "generated version data"
+    ],
+    "integration_kind": "azazel",
+    "executable_parity": {
+      "status": "not-modeled",
+      "command": [],
+      "expected_classification": "not-modeled",
+      "targets": [],
+      "workdir": ".azazel/parity-work"
+    }
+  }
+}
