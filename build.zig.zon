@@ -13,25 +13,14 @@
     .minimum_zig_version = "0.17.0-dev.292+fc1c83a36",
     // Must be kept in sync with the `deps.nix` for the Nix flake.
     // If you do not use Nix, a ZLS maintainer can take care of this.
-    .dependencies = .{
-        .known_folders = .{
-            .url = "https://github.com/ziglibs/known-folders/archive/207c34a16e4365edc20d92c7892f962b3bed46e8.tar.gz",
-            .hash = "known_folders-0.0.0-Fy-PJsbKAACbDh9bBxR0MMThxZSS6A9RH4apWphNHY70",
-        },
-        .diffz = .{
-            .url = "https://github.com/ziglibs/diffz/archive/d080c1eb782fff15068cabb3b82da85ce6054b74.tar.gz",
-            .hash = "diffz-0.0.1-G2tlIfLNAQCc06RFk0tFGj2M-X-id4WHFkMVw2JoMILR",
-        },
-        .lsp_kit = .{
-            .url = "https://github.com/zigtools/lsp-kit/archive/b886a2b0d5cee85ecbcc3089b863f7517cc9ff7f.tar.gz",
-            .hash = "lsp_kit-0.1.0-bi_PL3IyDACfp1xdTnkiOHEok2YpPCCCJHuuOcNzjl1D",
-        },
-        .tracy = .{
-            .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.13.1.tar.gz",
-            .hash = "N-V-__8AAOncKwEm1F9c5LrT7HMNmRMYX8-fAoqpc6YyTu9X",
-            .lazy = true,
-        },
-    },
+    // Azazel overlay: the modeled slices (snippets, uri) are self-contained
+    // std-only modules that import no packages. ZLS's real dependencies
+    // (known_folders, diffz, lsp_kit, tracy) are dropped here because Zig
+    // compiles every non-lazy dependency's build.zig into the dependency
+    // manifest, and at these pinned commits those build.zig files predate the
+    // 0.17-dev std.Build API this lane uses. They return when a package-using
+    // target (e.g. offsets via lsp) is modeled.
+    .dependencies = .{},
     .paths = .{""},
     .fingerprint = 0xa66330b97eb969ae, // Changing this has security and trust implications.
 }
