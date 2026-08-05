@@ -3,6 +3,7 @@ package build
 _modules: {
 	"snippets": snippets
 	"uri": uri
+	"gen_probe": gen_probe
 }
 
 _toolchain: toolchain
@@ -24,6 +25,8 @@ build: modules: {
 			pkg_imports: v.pkg_imports
 			pkg_artifacts: v.pkg_artifacts
 			build_options: v.build_options
+			option_values: v.option_values
+			gen_imports: v.gen_imports
 			build_options_import: v.build_options_import
 			native: v.native
 			optimize: profiles[v.profile].optimize

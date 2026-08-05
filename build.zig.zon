@@ -1,26 +1,8 @@
 .{
     .name = .zls,
-    // Remove `-dev` when tagging a new ZLS release and add it back on the next development cycle.
     .version = "0.17.0-dev",
-    // Specifies the minimum Zig version that is required to compile and test ZLS.
-    // Must be a Zig version that is downloadable from https://ziglang.org/download/ or a mirror.
-    //
-    // Whenever this version is increased, run the following command:
-    // ```bash
-    // nix flake update --commit-lock-file
-    // ```
-    // If you do not use Nix, a ZLS maintainer can take care of this.
     .minimum_zig_version = "0.17.0-dev.292+fc1c83a36",
-    // Must be kept in sync with the `deps.nix` for the Nix flake.
-    // If you do not use Nix, a ZLS maintainer can take care of this.
-    // Azazel overlay: the modeled slices (snippets, uri) are self-contained
-    // std-only modules that import no packages. ZLS's real dependencies
-    // (known_folders, diffz, lsp_kit, tracy) are dropped here because Zig
-    // compiles every non-lazy dependency's build.zig into the dependency
-    // manifest, and at these pinned commits those build.zig files predate the
-    // 0.17-dev std.Build API this lane uses. They return when a package-using
-    // target (e.g. offsets via lsp) is modeled.
     .dependencies = .{},
     .paths = .{""},
-    .fingerprint = 0xa66330b97eb969ae, // Changing this has security and trust implications.
+    .fingerprint = 0xa66330b97eb969ae,
 }
